@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Phil Town Rule #1 - Google Sheets Sync</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f7f6; padding: 20px; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h1 { color: #c0392b; text-align: center; }
+        .setup-box { background: #fff3cd; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; }
+        .search-area { display: flex; gap: 10px; margin-bottom: 20px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        input, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
+        button { cursor: pointer; border: none; border-radius: 6px; font-weight: bold; transition: 0.3s; }
+        .btn-fetch { background: #2c3e50; color: white; padding: 0 15px; }
+        .btn-calc { background: #c0392b; color: white; width: 100%; padding: 15px; font-size: 18px; margin-top: 20px; }
+        #resultArea { margin-top: 25px; padding: 20px; border-radius: 8px; display: none; background: #f9f9f9; border: 1px solid #eee; }
+        canvas { max-height: 250px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Rule #1 - Hệ Thống Tự Động</h1>
+
+    <div class="setup-box">
+        <strong>Hướng dẫn:</strong> Thay ID bảng tính của bạn vào ô dưới đây để kết nối dữ liệu.
+        <input type="text" id="sheetId" placeholder="Dán ID Google Sheet của bạn vào đây..." style="margin-top:5px;">
+    </div>
+
+    <div class="search-area">
+        <input type="text" id="symbol" placeholder="Nhập mã (VNM, HPG...)" style="text-transform: uppercase;">
+        <button class="btn-fetch" onclick="fetchFromSheet()">LẤY DỮ LIỆU</button>
+    </div>
+
+    <div class="grid">
+        <div>
+            <label>1. Đạt chuẩn 3M (Meaning, Moat, Mgmt)?</label>
+            <select id="m3_status">
+                <option value="1">ĐÃ ĐẠT</option>
+                <option value="0">CHƯA ĐẠT</option>
+            </select>
+            <label style="margin-top:10px; display:block;">EPS hiện tại (VND):</label>
+            <input type="number" id="eps">
+        </div>
+        <div>
+            <label>Tốc độ tăng trưởng (%/năm):</label>
+            <input type="number" id="growth" value="15">
+            <label style="margin-top:10px; display:block;">Giá thị trường (VND):</label>
+            <input type="number" id="marketPrice">
+        </div>
+    </div>
+
+    <button class="btn-calc" onclick="runAnalysis()">PHÂN TÍCH ĐẦU TƯ</button>
+
+    <div id="resultArea">
+        <div id="textContent"></div>
+        <canvas id="myChart"></canvas>
+    </div>
+</div>
+
+<script>
+    // 1. Hàm lấy dữ liệu từ Google Sheets
+    async function fetchFromSheet() {
+        const sheetId = document.getElementById('sheetId').value.trim();
+        const symbol = document.getElementById('symbol').value.toUpperCase().trim();
+        
+        if (!sheetId || !symbol) {
+            alert("Vui lòng nhập ID Sheet và Mã cổ phiếu!");
+            return;
+        }
+
+        // Chuyển đổi sang định dạng CSV để đọc dễ dàng
+        const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv`;
+
+        try {
+            const response = await fetch(url);
+            const data = await response.text();
+            
+            // Xử lý dữ liệu CSV
+            const rows = data.split('\n').map(row => {
+                return row.split(',').map(cell => cell.replace(/^"(.*)"$/, '$1'));
+            });
+
+            // Tìm mã chứng khoán ở cột đầu tiên (Cột A)
+            const found = rows.find(r => r[0] && r[0].trim().toUpperCase() === symbol);
+
+            if (found) {
+                document.getElementById('eps').value = found[1]; // Cột B
+                document.getElementById('marketPrice').value = found[2]; // Cột C
+                alert("Đã cập nhật dữ liệu cho: " + symbol);
+            } else {
+                alert("Không tìm thấy mã " + symbol + " trong bảng tính!");
+            }
+        } catch (error) {
+            alert("Lỗi kết nối! Hãy chắc chắn bạn đã: \n1. Chia sẻ Sheet ở chế độ 'Bất kỳ ai có liên kết'.\n2. Dán đúng ID bảng tính.");
+        }
+    }
+
+    // 2. Hàm tính toán và vẽ biểu đồ
+    let myChart = null;
+    function runAnalysis() {
+        const m3 = parseInt(document.getElementById('m3_status').value);
+        const eps = parseFloat(document.getElementById('eps').value);
+        const growth = parseFloat(document.getElementById('growth').value) / 100;
+        const marketPrice = parseFloat(document.getElementById('marketPrice').value);
+        
+        if(isNaN(eps) || isNaN(marketPrice)) {
+            alert("Vui lòng nhập hoặc tra cứu số liệu trước!");
+            return;
+        }
+
+        // Công thức Phil Town
+        const pe = (growth * 100) * 2;
+        const futureEPS = eps * Math.pow((1 + growth), 10);
+        const futurePrice = futureEPS * pe;
+        const stickerPrice = futurePrice / Math.pow(1.15, 10);
+        const mosPrice = stickerPrice * 0.5;
+
+        const resultArea = document.getElementById('resultArea');
+        resultArea.style.display = 'block';
+        
+        const isSafe = (m3 && marketPrice <= mosPrice);
+        document.getElementById('textContent').innerHTML = `
+            <div style="text-align:center; padding:10px; border-radius:8px; background:${isSafe ? '#d4edda' : '#f8d7da'}">
+                <h2 style="margin:0">${isSafe ? "✅ NÊN MUA" : "❌ CHƯA NÊN MUA"}</h2>
+                <p>Giá trị thực: <b>${Math.round(stickerPrice).toLocaleString()}đ</b></p>
+                <p>Giá mua an toàn (MOS): <b style="color:red">${Math.round(mosPrice).toLocaleString()}đ</b></p>
+            </div>
+        `;
+
+        updateChart(marketPrice, stickerPrice, mosPrice);
+    }
+
+    function updateChart(curr, stick, mos) {
+        const ctx = document.getElementById('myChart').getContext('2d');
+        if (myChart) myChart.destroy();
+        myChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Giá thị trường', 'Giá MOS', 'Giá trị thực'],
+                datasets: [{
+                    label: 'VND',
+                    data: [curr, mos, stick],
+                    backgroundColor: ['#95a5a6', '#27ae60', '#2980b9']
+                }]
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+</script>
+</body>
+</html>
